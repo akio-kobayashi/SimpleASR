@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 
 def Len2Mask(length, max_len):
@@ -14,44 +15,47 @@ class ASRModel(nn.Module):
         super(ASRModel, self).__init__()
 
         '''
-        input (B, 1, T, F) -> (B, 128, T//4, F//4)
+        input (B, 1, T, 20) -> (B, 128, T//4, 5)
         '''
         self.model = nn.Sequential(
-                nn.Conv2d(in_channels=1,out_channels=64,
-                            kernel_size=3, stride=1, padding=3//2, padding_mode='replicate',bias=False),
-                nn.Conv2d(in_channels=64,out_channels=128,
-                            kernel_size=3, stride=1, padding=3//2, padding_mode='replicate',bias=False),
-                nn.BatchNorm2d(num_features=128),
-                nn.ReLU(),
-                nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
-                nn.Conv2d(in_channels=128,out_channels=256,
-                            kernel_size=3, stride=1, padding=3//2, padding_mode='replicate', bias=False),
-                nn.Conv2d(in_channels=256,out_channels=512,
-                            kernel_size=3, stride=1, padding=3//2, padding_mode='replicate', bias=False),
-                nn.BatchNorm2d(num_features=512),
-                nn.ReLU(),
-                nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
+            nn.Conv2d(in_channels=1,out_channels=32,
+                      kernel_size=7, stride=1, padding=3//2,
+                      padding_mode='replicate',bias=False),
+            nn.BatchNorm2d(num_features=32),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0), # (B, 32, T//2, 10)
+            nn.Conv2d(in_channels=32,out_channels=64,
+                      kernel_size=5, stride=1, padding=3//2,
+                      padding_mode='replicate',bias=False),
+            nn.BatchNorm2d(num_features=64),
+            #nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0), # (B, 64, T//4, 5)
+            nn.Conv2d(in_channels=64,out_channels=128,
+                      kernel_size=3, stride=1, padding=3//2,
+                      padding_mode='replicate', bias=False),
+            nn.BatchNorm2d(num_features=128),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0), # (B, 128, T//8, 2)
+            nn.Conv2d(in_channels=128,out_channels=256,
+                      kernel_size=3, stride=1, padding=3//2,
+                      padding_mode='replicate', bias=False),
+            nn.BatchNorm2d(num_features=256),
+            #nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=1) # (B, 256, T//16, 1)
         )
         # 176 = vocab size + 1
-        self.feedforward = nn.Sequential(
-                nn.Linear(512, 256),
-                nn.ReLU(),
-                nn.BatchNorm1d(256),
-                nn.Linear(256, 176),
-                nn.Softmax()
-        )
-
+        self.fc1=nn.Linear(256, 176)
+        
     def forward(self, x, length=None):
         x = x.unsqueeze(dim=1)
         y = self.model(x)
         if length is not None:
             mask = Len2Mask(length, y.shape[2])
-            y = torch.mul(y, mask)
-            y = torch.mean(torch.mean(y, dim=3), dim=2) # (B, C)
-            y /= torch.sum(torch.sum(mask, dim=3), dim=2)
+            y = torch.mul(y, mask.cuda())
+            y = torch.mean(y, dim=2) # (B, C, 1)
+            y /= torch.sum(mask.cuda(), dim=2)
         else:
-            y = torch.mean(torch.mean(y, dim=3), dim=2)
-
-        y = nn.feedforward(y)
-
+            y = torch.mean(y, dim=2) # (B, C, 1)
+            
+        y = y.view(y.shape[0], -1)
+        y = self.fc1(y)
+        y = F.softmax(y, dim=1)
         return y

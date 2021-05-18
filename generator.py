@@ -83,7 +83,7 @@ class SpeechDataset(torch.utils.data.Dataset):
         input -= self.mean
         input /= self.std
 
-        label=self.h5fd[self.keys[idx]+'/label'][()]
+        label=int(self.h5fd[self.keys[idx]+'/label'][()])
 
         return input, label
 
@@ -100,10 +100,10 @@ def data_processing(data, data_type="train"):
         """ inputs : (batch, time, feature) """
         # w/o channel
         inputs.append(torch.from_numpy(input.astype(np.float32)).clone())
-        labels.append(torch.from_numpy(label.astype(np.int)).clone())
+        labels.append(label)
         input_lengths.append(input.shape[0])
 
     inputs = nn.utils.rnn.pad_sequence(inputs, batch_first=True)
-    labels = nn.utils.rnn.pad_sequence(labels, batch_first=True)
-
+    labels=torch.from_numpy(np.array(labels)).clone()
+    
     return inputs, labels, input_lengths

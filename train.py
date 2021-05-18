@@ -4,11 +4,13 @@ import torch.nn as nn
 import torch.utils.data as data
 import torch.optim as optim
 import torch.nn.functional as F
-from torch.utils.tensorboard import SummaryWriter
+#from torch.utils.tensorboard import SummaryWriter
+from model import ASRModel
 from generator import SpeechDataset
 import generator
 import numpy as np
 import argparse
+from sklearn.metrics import accuracy_score
 
 class IterMeter(object):
     """keeps track of total iterations"""
@@ -22,34 +24,41 @@ class IterMeter(object):
         return self.val
 
 def train(model, loader, optimizer, scheduler,
-          criterion, epoch, iter_meter, writer):
+          criterion, epoch, iter_meter):
     model.train()
 
     data_len=len(loader)
 
     epoch_loss = 0
+    preds=None
+    corrs=None
     for batch_idx, _data in enumerate(loader):
         inputs, labels, lengths = _data
 
         optimizer.zero_grad()
 
-        output = model(inputs.cuda(), lengths)
-        loss = criterion(output, labels.to(device))
-        if writer:
-            writer.add_scalar('loss', loss.item(), iter_meter.get())
+        outputs = model(inputs.cuda(), lengths)
+        loss = criterion(outputs, labels.cuda())
         loss.backward()
 
         optimizer.step()
         scheduler.step()
         iter_meter.step()
 
-        output = output.view(-1, 1)
-        labels = labels.view(-1, 1)
-        
+        labels=labels.unsqueeze(dim=-1)
+        outputs=outputs.to('cpu').detach().numpy().copy()
+        labels=labels.to('cpu').detach().numpy().copy().astype(float)
+        if preds is None:
+            preds=outputs
+            corrs=labels
+        else:
+            preds = np.vstack((preds, outputs))
+            corrs = np.vstack((corrs, labels))
+
         if batch_idx > 0 and (batch_idx % 100 == 0 or batch_idx == data_len) :
-            print('Train Epcoh: {} [{}/{} ({:.0f}%)]\t Loss: {:.9f} Acc: {:.3f}'.format(
+            print('Train Epcoh: {} [{}/{} ({:.0f}%)]\t Loss: {:.9f}'.format(
                 epoch, batch_idx * len(inputs), data_len*inputs.shape[0],
-                100. * batch_idx / data_len, loss.item(), 100. * acc)
+                100. * batch_idx / data_len, loss.item())
             )
 
         epoch_loss += loss.item()
@@ -60,8 +69,8 @@ def train(model, loader, optimizer, scheduler,
     epoch_loss /= data_len
 
     print('Train Epcoh: {}\t Loss: {:.9f}'.format(epoch, epoch_loss))
-
-    return epoch_loss
+    preds = np.argmax(preds, axis=1)
+    return epoch_loss, preds, corrs
 
 def evaluate(model, loader):
 
@@ -74,20 +83,19 @@ def evaluate(model, loader):
         for i, _data in enumerate(loader):
             inputs, labels, lengths = _data
 
-            output = model(inputs.cuda(), lengths)
+            outputs = model(inputs.cuda(), lengths)
+            labels=labels.unsqueeze(dim=-1)
 
-            outputs=output.to('cpu').detach().numpy().copy()
-            outputs = outputs.view(-1, 1)
+            outputs=outputs.to('cpu').detach().numpy().copy()
             labels=labels.to('cpu').detach().numpy().copy().astype(float)
-            labels = labels.view(-1, 1)
-            
             if preds is None:
                 preds=outputs
                 corrs=labels
             else:
-                preds = np.append(preds, outputs)
-                corrs = np.append(corrs, labels)
-
+                preds = np.vstack((preds, outputs))
+                corrs = np.vstack((corrs, labels))
+                
+    preds = np.argmax(preds, axis=1)
     return preds, corrs
 
 def count_parameters(model):
@@ -110,7 +118,6 @@ def main():
     parser.add_argument('--learning-rate', type=float, default=1.0e-4, help='initial learning rate')
     args = parser.parse_args()
 
-    writer = SummaryWriter(log_dir=args.logs)
     use_cuda = torch.cuda.is_available()
     torch.manual_seed(7)
     device = torch.device("cuda" if use_cuda else "cpu")
@@ -155,12 +162,16 @@ def main():
 
     max_acc=0.
     for epoch in range(1, args.epochs+1):
-        train(model, train_loader,
-              optimizer, scheduler, criterion,
-              epoch, iter_meter, writer)
+        loss, preds, corrs = train(model, train_loader,
+                                   optimizer, scheduler, criterion,
+                                   epoch, iter_meter)
+        acc = accuracy_score(corrs, preds)
+        print('Train Acc: %.3f' % acc)
         # get predictions shape=(B, 1)
         preds, corrs = evaluate(model, valid_loader)
-        print('Valid Acc: %.3f Prec: %.3f Recall: %.3f F1: %.3f' % (acc, prec, recall, f1))
+        acc = accuracy_score(corrs, preds)
+
+        print('Valid Acc: %.3f' % acc)
 
         if acc > max_acc:
             print('Maximum Acc changed... %.3f -> %.3f' % (max_acc , acc))
