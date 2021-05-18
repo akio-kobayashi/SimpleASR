@@ -32,11 +32,12 @@ class ASRModel(nn.Module):
                 nn.ReLU(),
                 nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
         )
+        # 176 = vocab size + 1
         self.feedforward = nn.Sequential(
                 nn.Linear(512, 256),
                 nn.ReLU(),
                 nn.BatchNorm1d(256),
-                nn.Linear(256, 175),
+                nn.Linear(256, 176),
                 nn.Softmax()
         )
 
