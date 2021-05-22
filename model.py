@@ -15,34 +15,34 @@ class ASRModel(nn.Module):
         super(ASRModel, self).__init__()
 
         '''
-        input (B, 1, T, 20) -> (B, 128, T//4, 5)
+        input (B, 1, T, 40) -> (B, 128, T//4, 2)
         '''
         self.model = nn.Sequential(
             nn.Conv2d(in_channels=1,out_channels=32,
                       kernel_size=7, stride=1, padding=3//2,
                       padding_mode='replicate',bias=False),
             nn.BatchNorm2d(num_features=32),
-            nn.MaxPool2d(kernel_size=2, stride=2, padding=0), # (B, 32, T//2, 10)
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0), # (B, 32, T//2, 20)
             nn.Conv2d(in_channels=32,out_channels=64,
                       kernel_size=5, stride=1, padding=3//2,
                       padding_mode='replicate',bias=False),
             nn.BatchNorm2d(num_features=64),
             #nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2, padding=0), # (B, 64, T//4, 5)
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0), # (B, 64, T//4, 10)
             nn.Conv2d(in_channels=64,out_channels=128,
                       kernel_size=3, stride=1, padding=3//2,
                       padding_mode='replicate', bias=False),
             nn.BatchNorm2d(num_features=128),
-            nn.MaxPool2d(kernel_size=2, stride=2, padding=0), # (B, 128, T//8, 2)
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0), # (B, 128, T//8, 5)
             nn.Conv2d(in_channels=128,out_channels=256,
                       kernel_size=3, stride=1, padding=3//2,
                       padding_mode='replicate', bias=False),
             nn.BatchNorm2d(num_features=256),
             #nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2, padding=1) # (B, 256, T//16, 1)
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0) # (B, 256, T//16, 2)
         )
         # 176 = vocab size + 1
-        self.fc1=nn.Linear(256, 176)
+        self.fc1=nn.Linear(256*2, 176)
         
     def forward(self, x, length=None):
         x = x.unsqueeze(dim=1)
@@ -50,12 +50,12 @@ class ASRModel(nn.Module):
         if length is not None:
             mask = Len2Mask(length, y.shape[2])
             y = torch.mul(y, mask.cuda())
-            y = torch.mean(y, dim=2) # (B, C, 1)
+            y = torch.mean(y, dim=2) # (B, C, 2)
             y /= torch.sum(mask.cuda(), dim=2)
         else:
-            y = torch.mean(y, dim=2) # (B, C, 1)
+            y = torch.mean(y, dim=2) # (B, C, 2)
             
         y = y.view(y.shape[0], -1)
         y = self.fc1(y)
-        y = F.softmax(y, dim=1)
+        #y = F.softmax(y, dim=1)
         return y
