@@ -4,7 +4,6 @@ import torch.nn as nn
 import torch.utils.data as data
 import torch.optim as optim
 import torch.nn.functional as F
-#from torch.utils.tensorboard import SummaryWriter
 from model import ASRModel
 from generator import SpeechDataset
 import generator
@@ -128,6 +127,7 @@ def main():
 
     train_dataset=SpeechDataset(path=args.data, keypath=args.train, train=True)
     mean, std = train_dataset.get_stats()
+    train_dataset.write_stats(args.out_stats)
 
     train_loader =data.DataLoader(dataset=train_dataset,
                                   batch_size=args.batch_size,
@@ -177,7 +177,10 @@ def main():
             print('Maximum Acc changed... %.3f -> %.3f' % (max_acc , acc))
             max_acc = acc
             torch.save(model.to('cpu').state_dict(), args.output)
+            torch.save(model.to('cpu'), args.output)
             model.to(device)
+            
+    print('Maximum Acc: %.3f' % max_acc)
 
 if __name__ == "__main__":
     main()
