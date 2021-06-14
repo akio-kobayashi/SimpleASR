@@ -24,21 +24,25 @@ class ASRModel(nn.Module):
                       kernel_size=7, stride=1, padding=3//2,
                       padding_mode='replicate',bias=False),
             nn.BatchNorm2d(num_features=32),
+            nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2, padding=0), # (B, 32, T//2, 20)
             nn.Conv2d(in_channels=32,out_channels=64,
                       kernel_size=5, stride=1, padding=3//2,
                       padding_mode='replicate',bias=False),
             nn.BatchNorm2d(num_features=64),
+            nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2, padding=0), # (B, 64, T//4, 10)
             nn.Conv2d(in_channels=64,out_channels=128,
                       kernel_size=3, stride=1, padding=3//2,
                       padding_mode='replicate', bias=False),
             nn.BatchNorm2d(num_features=128),
+            nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2, padding=0), # (B, 128, T//8, 5)
             nn.Conv2d(in_channels=128,out_channels=256,
                       kernel_size=3, stride=1, padding=3//2,
                       padding_mode='replicate', bias=False),
             nn.BatchNorm2d(num_features=256),
+            nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2, padding=0) # (B, 256, T//16, 2)
         )
         # 176 = vocab size + 1
